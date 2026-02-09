@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consulta de Scoring Crediticio BCRA</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            margin: 0;
+            padding: 2rem 0;
+        }
+
+        .container {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 600px;
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #666;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        button {
+            width: 100%;
+            padding: 0.75rem;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin-top: 1rem;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        #result {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            border-radius: 4px;
+            display: none;
+        }
+
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .no-data {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+
+        .loading {
+            text-align: center;
+            color: #666;
+            display: none;
+        }
+
+        /* History table styles */
+        #history-section {
+            margin-top: 1.5rem;
+            display: none;
+        }
+
+        #history-section h3 {
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .history-table th,
+        .history-table td {
+            padding: 0.5rem 0.75rem;
+            text-align: center;
+            border: 1px solid #dee2e6;
+        }
+
+        .history-table th {
+            background-color: #343a40;
+            color: white;
+            font-weight: 600;
+        }
+
+        .history-table tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+
+        .sit-ok {
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .sit-warn {
+            color: #ffc107;
+            font-weight: bold;
+        }
+
+        .sit-bad {
+            color: #dc3545;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>Consulta BCRA</h1>
+        <form id="checkForm">
+            <div class="form-group">
+                <label for="dni">DNI / CUIT / CUIL</label>
+                <input type="text" id="dni" name="dni" required placeholder="Ingrese números sin guiones">
+            </div>
+
+            <div class="form-group">
+                <label for="name">Nombre (Opcional)</label>
+                <input type="text" id="name" name="name" placeholder="Nombre completo">
+            </div>
+
+            <div class="form-group">
+                <label for="sex">Sexo (Requerido para cálculo de CUIL)</label>
+                <select id="sex" name="sex" required>
+                    <option value="">Seleccione...</option>
+                    <option value="M">Masculino</option>
+                    <option value="F">Femenino</option>
+                    <option value="X">No Binario / Otro</option>
+                </select>
+            </div>
+
+            <button type="submit">Consultar Scoring</button>
+        </form>
+
+        <div id="loading" class="loading">Consultando BCRA...</div>
+        <div id="result"></div>
+        <div id="history-section">
+            <h3>📊 Resumen últimos 6 meses</h3>
+            <div id="history-loading" class="loading" style="display:none;">Cargando historial...</div>
+            <div id="history-content"></div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('checkForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const dni = document.getElementById('dni').value;
+            const name = document.getElementById('name').value;
+            const sex = document.getElementById('sex').value;
+
+            const resultDiv = document.getElementById('result');
+            const loadingDiv = document.getElementById('loading');
+            const historySection = document.getElementById('history-section');
+
+            // Reset UI
+            resultDiv.style.display = 'none';
+            resultDiv.className = '';
+            loadingDiv.style.display = 'block';
+            historySection.style.display = 'none';
+
+            try {
+                const response = await fetch('/check_score', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dni, name, sex }),
+                });
+
+                const data = await response.json();
+                loadingDiv.style.display = 'none';
+                resultDiv.style.display = 'block';
+
+                if (response.ok) {
+                    const cuit = data.calculated_cuit || dni;
+
+                    if (data.status === 'no_data') {
+                        resultDiv.className = 'no-data';
+                        resultDiv.innerHTML = `<strong>CUIT ${cuit}:</strong> ${data.message}`;
+                        // Still try to fetch history
+                        fetchHistory(cuit);
+                    } else if (data.status === 'success') {
+                        resultDiv.className = 'success';
+
+                        let html = `<h3>Situación actual — CUIT ${cuit}</h3>`;
+
+                        data.data.forEach(item => {
+                            const entity = item.periodos_entidades_entidad || 'Entidad desconocida';
+                            const situation = item.periodos_entidades_situacion;
+                            const amount = item.periodos_entidades_monto;
+
+                            let situationText = `Situación ${situation}`;
+                            if (situation == 1) situationText += " (Normal)";
+                            else situationText += " (Irregular)";
+
+                            html += `<p><strong>Entidad:</strong> ${entity}<br>
+                                 <strong>Situación:</strong> ${situationText}<br>
+                                 <strong>Monto:</strong> $${Number(amount).toLocaleString('es-AR')}</p><hr>`;
+                        });
+
+                        resultDiv.innerHTML = html;
+
+                        // Fetch history
+                        fetchHistory(cuit);
+                    } else {
+                        resultDiv.className = 'error';
+                        resultDiv.textContent = 'Respuesta inesperada del servidor.';
+                    }
+                } else {
+                    resultDiv.className = 'error';
+                    resultDiv.textContent = data.error || 'Error al consultar el servicio.';
+                    if (data.details) resultDiv.textContent += ` — ${data.details}`;
+                }
+            } catch (error) {
+                loadingDiv.style.display = 'none';
+                resultDiv.style.display = 'block';
+                resultDiv.className = 'error';
+                resultDiv.textContent = 'Error de conexión: ' + error.message;
+            }
+        });
+
+        async function fetchHistory(cuit) {
+            const historySection = document.getElementById('history-section');
+            const historyLoading = document.getElementById('history-loading');
+            const historyContent = document.getElementById('history-content');
+
+            historySection.style.display = 'block';
+            historyLoading.style.display = 'block';
+            historyContent.innerHTML = '';
+
+            try {
+                const response = await fetch('/check_history', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cuit }),
+                });
+
+                const data = await response.json();
+                historyLoading.style.display = 'none';
+
+                if (response.ok && data.status === 'success') {
+                    let personName = data.person_name || '';
+                    let html = '';
+                    if (personName && personName !== 'N/A') {
+                        html += `<p><strong>Titular:</strong> ${personName}</p>`;
+                    }
+
+                    html += `<table class="history-table">
+                        <thead>
+                            <tr>
+                                <th>Período</th>
+                                <th>Peor Situación</th>
+                                <th>Deuda Total</th>
+                                <th>Entidades</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+
+                    data.history.forEach(month => {
+                        let sitClass = 'sit-ok';
+                        if (month.worst_situation >= 3) sitClass = 'sit-bad';
+                        else if (month.worst_situation == 2) sitClass = 'sit-warn';
+
+                        html += `<tr>
+                            <td>${month.period}</td>
+                            <td class="${sitClass}">${month.worst_situation}</td>
+                            <td>$${Number(month.total_debt).toLocaleString('es-AR')}</td>
+                            <td>${month.num_entities}</td>
+                        </tr>`;
+                    });
+
+                    html += `</tbody></table>`;
+                    historyContent.innerHTML = html;
+
+                } else if (data.status === 'no_history') {
+                    historyContent.innerHTML = `<p style="color:#856404;">${data.message}</p>`;
+                } else {
+                    historyContent.innerHTML = `<p style="color:#721c24;">Error al cargar historial: ${data.error || 'desconocido'}</p>`;
+                }
+            } catch (error) {
+                historyLoading.style.display = 'none';
+                historyContent.innerHTML = `<p style="color:#721c24;">Error de conexión al cargar historial.</p>`;
+            }
+        }
+    </script>
+
+</body>
+
+</html>
