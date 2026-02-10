@@ -540,7 +540,7 @@
                         html += `<span class="condition-badge badge-auto">Autónomo</span>`;
                     }
                     if (!data.is_monotributo && !data.is_responsable_inscripto && !data.is_relacion_dependencia && !data.is_autonomo) {
-                        html += `<span class="condition-badge badge-none">Sin condición activa detectada</span>`;
+                        html += `<span class="condition-badge badge-none">${data.condicion_fiscal || 'Sin condición activa detectada'}</span>`;
                     }
                     html += `</div>`;
 
