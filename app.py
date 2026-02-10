@@ -383,7 +383,7 @@ def check_afip():
         # If no tax inscriptions found, indicate it clearly
         if not conditions:
             if not datos_mono and not datos_rg:
-                condition = 'Sin inscripción fiscal propia'
+                condition = 'Sin inscripciones activas — Posible empleado en relación de dependencia, jubilado o sin actividad registrada'
             else:
                 condition = 'Sin condicion activa detectada'
         else:
