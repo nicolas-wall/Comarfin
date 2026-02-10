@@ -369,10 +369,6 @@ def check_afip():
                 if 'RELAC' in desc_act.upper() and 'DEPENDENCIA' in desc_act.upper():
                     is_relacion_dependencia = True
 
-        # If no tax data sections exist but person is active, likely empleado en relación de dependencia
-        if not datos_mono and not datos_rg and estado_clave == 'ACTIVO':
-            is_relacion_dependencia = True
-
         # Determine condition label
         conditions = []
         if is_monotributo:
@@ -384,7 +380,14 @@ def check_afip():
         if is_autonomo:
             conditions.append('Autonomo')
 
-        condition = ' | '.join(conditions) if conditions else 'Sin condicion activa detectada'
+        # If no tax inscriptions found, indicate it clearly
+        if not conditions:
+            if not datos_mono and not datos_rg:
+                condition = 'Sin inscripción fiscal propia'
+            else:
+                condition = 'Sin condicion activa detectada'
+        else:
+            condition = ' | '.join(conditions)
 
         # Get domicilio
         domicilio = datos_gen.get('domicilioFiscal', {})
