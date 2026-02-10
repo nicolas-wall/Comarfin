@@ -4,6 +4,7 @@ from afip import Afip
 import pandas as pd
 import traceback
 import os
+from sheets_helper import save_consultation, get_spreadsheet_url
 
 app = Flask(__name__)
 
@@ -435,6 +436,32 @@ def check_afip():
             })
         traceback.print_exc()
         return jsonify({'error': error_msg}), 500
+
+@app.route('/save_to_sheets', methods=['POST'])
+def save_to_sheets():
+    """Save consultation data to Google Sheets."""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        url = save_consultation(data)
+        return jsonify({
+            'status': 'success',
+            'message': 'Datos guardados en Google Sheets',
+            'url': url
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/sheets_url', methods=['GET'])
+def sheets_url():
+    """Get the URL of the Google Sheets spreadsheet."""
+    url = get_spreadsheet_url()
+    if url:
+        return jsonify({'url': url})
+    return jsonify({'url': None})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

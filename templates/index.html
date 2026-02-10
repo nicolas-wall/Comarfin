@@ -188,6 +188,51 @@
             margin-bottom: 0;
         }
 
+        /* Google Sheets export button */
+        .export-section {
+            margin-top: 1.5rem;
+            text-align: center;
+            display: none;
+        }
+
+        .export-btn {
+            background: linear-gradient(135deg, #0f9d58, #34a853);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .export-btn:hover {
+            background: linear-gradient(135deg, #0b8043, #2d9249);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(15, 157, 88, 0.3);
+        }
+
+        .export-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .export-msg {
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .export-msg a {
+            color: #0f9d58;
+            font-weight: 600;
+        }
+
         .condition-badge {
             display: inline-block;
             padding: 0.35rem 0.75rem;
@@ -347,11 +392,25 @@
             <div id="afip-loading" class="loading" style="display:none;">Consultando AFIP...</div>
             <div id="afip-content"></div>
         </div>
+
+        <!-- Export to Google Sheets -->
+        <div id="export-section" class="export-section">
+            <button id="exportBtn" class="export-btn" onclick="saveToSheets()">
+                📊 Guardar en Google Sheets
+            </button>
+            <div id="export-msg" class="export-msg"></div>
+        </div>
     </div>
 
     <script>
+        // Global data store for export
+        let lastConsultation = { dni: '', sex: '', cuit: '', bcra: {}, afip: {} };
+
         document.getElementById('checkForm').addEventListener('submit', async function (e) {
             e.preventDefault();
+            // Reset export
+            document.getElementById('export-section').style.display = 'none';
+            document.getElementById('export-msg').innerHTML = '';
 
             const dni = document.getElementById('dni').value;
             const name = document.getElementById('name').value;
@@ -382,10 +441,14 @@
 
                 if (response.ok) {
                     const cuit = data.calculated_cuit || dni;
+                    lastConsultation.dni = dni;
+                    lastConsultation.sex = sex;
+                    lastConsultation.cuit = cuit;
 
                     if (data.status === 'no_data') {
                         resultDiv.className = 'no-data';
                         resultDiv.innerHTML = `<strong>CUIT ${cuit}:</strong> ${data.message}`;
+                        lastConsultation.bcra = { name: '', situacion: 'Sin datos', deuda_total: 0, entidades: 0 };
                         // Still try to fetch history and AFIP
                         fetchHistory(cuit);
                         fetchAfip(dni, sex, cuit);
@@ -393,11 +456,16 @@
                         resultDiv.className = 'success';
 
                         let html = `<h3>Situación actual — CUIT ${cuit}</h3>`;
+                        let worstSituation = 1;
+                        let totalDebt = 0;
+                        let numEntities = data.data.length;
 
                         data.data.forEach(item => {
                             const entity = item.periodos_entidades_entidad || 'Entidad desconocida';
                             const situation = item.periodos_entidades_situacion;
                             const amount = item.periodos_entidades_monto;
+                            if (situation > worstSituation) worstSituation = situation;
+                            totalDebt += Number(amount) || 0;
 
                             let situationText = `Situación ${situation}`;
                             if (situation == 1) situationText += " (Normal)";
@@ -407,6 +475,13 @@
                                  <strong>Situación:</strong> ${situationText}<br>
                                  <strong>Monto:</strong> $${Number(amount).toLocaleString('es-AR')}</p><hr>`;
                         });
+
+                        lastConsultation.bcra = {
+                            name: '',
+                            situacion: worstSituation,
+                            deuda_total: totalDebt,
+                            entidades: numEntities
+                        };
 
                         resultDiv.innerHTML = html;
 
@@ -581,6 +656,28 @@
                         html += `</tbody></table></details></div>`;
                     }
 
+                    // Store AFIP data for export
+                    lastConsultation.afip = {
+                        nombre: data.nombre,
+                        estado_clave: data.estado_clave,
+                        tipo_persona: data.tipo_persona,
+                        condicion_fiscal: data.condicion_fiscal,
+                        is_monotributo: data.is_monotributo,
+                        categoria_monotributo: data.categoria_monotributo,
+                        is_responsable_inscripto: data.is_responsable_inscripto,
+                        is_autonomo: data.is_autonomo,
+                        is_relacion_dependencia: data.is_relacion_dependencia,
+                        domicilio: data.domicilio,
+                        actividades: data.actividades,
+                        impuestos: data.impuestos
+                    };
+                    // Also store name in BCRA if we didn't have it
+                    if (!lastConsultation.bcra.name) {
+                        lastConsultation.bcra.name = data.nombre;
+                    }
+                    // Show export button
+                    document.getElementById('export-section').style.display = 'block';
+
                     afipContent.innerHTML = html;
 
                 } else if (data.status === 'partial') {
@@ -608,6 +705,34 @@
                 afipLoading.style.display = 'none';
                 afipContent.innerHTML = `<p style="color:#721c24;">Error de conexión al consultar AFIP.</p>`;
             }
+        }
+
+        async function saveToSheets() {
+            const btn = document.getElementById('exportBtn');
+            const msg = document.getElementById('export-msg');
+            btn.disabled = true;
+            btn.textContent = '⏳ Guardando...';
+            msg.innerHTML = '';
+
+            try {
+                const response = await fetch('/save_to_sheets', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(lastConsultation)
+                });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    msg.innerHTML = `✅ Guardado. <a href="${data.url}" target="_blank">Abrir planilla →</a>`;
+                } else {
+                    msg.innerHTML = `❌ Error: ${data.error || 'desconocido'}`;
+                }
+            } catch (error) {
+                msg.innerHTML = `❌ Error de conexión al guardar.`;
+            }
+
+            btn.disabled = false;
+            btn.textContent = '📊 Guardar en Google Sheets';
         }
     </script>
 

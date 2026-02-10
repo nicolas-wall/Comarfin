@@ -21,3 +21,7 @@ comarfin.csr
 afip_response*.json
 afip_constancia_response.html
 cuitonline_response.html
+
+# Google Sheets credentials - NEVER commit
+google_credentials.json
+.sheets_id
