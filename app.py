@@ -14,13 +14,36 @@ except Exception as e:
     print(f"Error initializing BCRA client: {e}")
     client = None
 
-# Initialize AFIP SDK
+# Initialize AFIP SDK (Production mode with AFIP certificate)
 AFIP_ACCESS_TOKEN = os.environ.get('AFIP_ACCESS_TOKEN', 'qGfm4QDkgugrJrxdw5YDHpfdrBhxwCYH4x3AcwgoavFCjfK4CWBD2lIfE3HjcpN3')
+AFIP_CUIT = 20289107364  # Production CUIT
+
+# Load cert and key from env vars (Render) or local files
+afip_cert = os.environ.get('AFIP_CERT', None)
+afip_key = os.environ.get('AFIP_KEY', None)
+
+if not afip_cert:
+    cert_path = os.path.join(os.path.dirname(__file__), 'comarfin.crt')
+    if os.path.exists(cert_path):
+        with open(cert_path, 'r') as f:
+            afip_cert = f.read()
+
+if not afip_key:
+    key_path = os.path.join(os.path.dirname(__file__), 'comarfin.key')
+    if os.path.exists(key_path):
+        with open(key_path, 'r') as f:
+            afip_key = f.read()
+
 try:
-    afip_client = Afip({
-        "CUIT": 20409378472,  # Test CUIT for dev mode
-        "access_token": AFIP_ACCESS_TOKEN
-    })
+    afip_config = {
+        "CUIT": AFIP_CUIT,
+        "access_token": AFIP_ACCESS_TOKEN,
+        "production": True,
+        "cert": afip_cert,
+        "key": afip_key,
+    }
+    afip_client = Afip(afip_config)
+    print("AFIP client initialized in PRODUCTION mode")
 except Exception as e:
     print(f"Error initializing AFIP client: {e}")
     afip_client = None
@@ -345,6 +368,10 @@ def check_afip():
                 all_activities.append(desc_act)
                 if 'RELAC' in desc_act.upper() and 'DEPENDENCIA' in desc_act.upper():
                     is_relacion_dependencia = True
+
+        # If no tax data sections exist but person is active, likely empleado en relación de dependencia
+        if not datos_mono and not datos_rg and estado_clave == 'ACTIVO':
+            is_relacion_dependencia = True
 
         # Determine condition label
         conditions = []

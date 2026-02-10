@@ -11,3 +11,13 @@ build/
 debug_cuil.py
 test_*.py
 validate_*.py
+
+# AFIP certificates - NEVER commit these
+comarfin.crt
+comarfin.key
+comarfin.csr
+
+# Test data
+afip_response*.json
+afip_constancia_response.html
+cuitonline_response.html
