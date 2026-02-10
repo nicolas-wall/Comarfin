@@ -4,3 +4,4 @@ requests
 gunicorn
 git+https://github.com/morabdiego/pyBCRA.git
 python-dotenv
+afip.py

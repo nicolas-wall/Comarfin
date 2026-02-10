@@ -23,7 +23,7 @@
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             width: 100%;
-            max-width: 600px;
+            max-width: 700px;
         }
 
         h1 {
@@ -147,13 +147,168 @@
             color: #dc3545;
             font-weight: bold;
         }
+
+        /* AFIP Section */
+        #afip-section {
+            margin-top: 1.5rem;
+            display: none;
+            border-top: 2px solid #e0e0e0;
+            padding-top: 1.5rem;
+        }
+
+        #afip-section h3 {
+            color: #0056b3;
+            margin-bottom: 0.75rem;
+        }
+
+        .afip-card {
+            background: linear-gradient(135deg, #e8f0fe 0%, #f0f4ff 100%);
+            border: 1px solid #b8d4fe;
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .afip-card .label {
+            font-size: 0.8rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.25rem;
+        }
+
+        .afip-card .value {
+            font-size: 1rem;
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+
+        .afip-card .value:last-child {
+            margin-bottom: 0;
+        }
+
+        .condition-badge {
+            display: inline-block;
+            padding: 0.35rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            margin-right: 0.5rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .badge-mono {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #b1dfbb;
+        }
+
+        .badge-ri {
+            background-color: #cce5ff;
+            color: #004085;
+            border: 1px solid #b8daff;
+        }
+
+        .badge-dep {
+            background-color: #ffeeba;
+            color: #856404;
+            border: 1px solid #ffd666;
+        }
+
+        .badge-auto {
+            background-color: #e2d5f1;
+            color: #4a1d8c;
+            border: 1px solid #c3aee0;
+        }
+
+        .badge-none {
+            background-color: #e9ecef;
+            color: #495057;
+            border: 1px solid #ced4da;
+        }
+
+        .afip-impuestos {
+            margin-top: 0.75rem;
+        }
+
+        .afip-impuestos summary {
+            cursor: pointer;
+            font-weight: 600;
+            color: #333;
+            padding: 0.5rem 0;
+        }
+
+        .afip-imp-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 0.5rem;
+            font-size: 0.85rem;
+        }
+
+        .afip-imp-table th,
+        .afip-imp-table td {
+            padding: 0.4rem 0.6rem;
+            text-align: left;
+            border: 1px solid #dee2e6;
+        }
+
+        .afip-imp-table th {
+            background-color: #0056b3;
+            color: white;
+            font-weight: 600;
+        }
+
+        .afip-imp-table tr:nth-child(even) {
+            background-color: #f0f4ff;
+        }
+
+        .estado-activo {
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .estado-inactivo {
+            color: #999;
+        }
+
+        .afip-activities {
+            margin-top: 0.5rem;
+        }
+
+        .afip-activities ul {
+            margin: 0.25rem 0 0 1.25rem;
+            padding: 0;
+        }
+
+        .afip-activities li {
+            font-size: 0.85rem;
+            color: #555;
+            margin-bottom: 0.25rem;
+        }
+
+        .afip-partial {
+            background: #fff8e1;
+            border: 1px solid #ffe082;
+            border-radius: 8px;
+            padding: 1rem;
+            color: #795548;
+        }
+
+        .afip-not-found {
+            background: #fce4ec;
+            border: 1px solid #ef9a9a;
+            border-radius: 8px;
+            padding: 1rem;
+            color: #c62828;
+        }
     </style>
 </head>
 
 <body>
 
     <div class="container">
-        <h1>Consulta BCRA</h1>
+        <h1>Consulta BCRA + AFIP</h1>
         <form id="checkForm">
             <div class="form-group">
                 <label for="dni">DNI / CUIT / CUIL</label>
@@ -175,7 +330,7 @@
                 </select>
             </div>
 
-            <button type="submit">Consultar Scoring</button>
+            <button type="submit">Consultar Scoring + AFIP</button>
         </form>
 
         <div id="loading" class="loading">Consultando BCRA...</div>
@@ -184,6 +339,13 @@
             <h3>📊 Resumen últimos 6 meses</h3>
             <div id="history-loading" class="loading" style="display:none;">Cargando historial...</div>
             <div id="history-content"></div>
+        </div>
+
+        <!-- AFIP Section -->
+        <div id="afip-section">
+            <h3>🏛️ Condición Fiscal — AFIP</h3>
+            <div id="afip-loading" class="loading" style="display:none;">Consultando AFIP...</div>
+            <div id="afip-content"></div>
         </div>
     </div>
 
@@ -198,12 +360,14 @@
             const resultDiv = document.getElementById('result');
             const loadingDiv = document.getElementById('loading');
             const historySection = document.getElementById('history-section');
+            const afipSection = document.getElementById('afip-section');
 
             // Reset UI
             resultDiv.style.display = 'none';
             resultDiv.className = '';
             loadingDiv.style.display = 'block';
             historySection.style.display = 'none';
+            afipSection.style.display = 'none';
 
             try {
                 const response = await fetch('/check_score', {
@@ -222,8 +386,9 @@
                     if (data.status === 'no_data') {
                         resultDiv.className = 'no-data';
                         resultDiv.innerHTML = `<strong>CUIT ${cuit}:</strong> ${data.message}`;
-                        // Still try to fetch history
+                        // Still try to fetch history and AFIP
                         fetchHistory(cuit);
+                        fetchAfip(dni, sex, cuit);
                     } else if (data.status === 'success') {
                         resultDiv.className = 'success';
 
@@ -245,8 +410,9 @@
 
                         resultDiv.innerHTML = html;
 
-                        // Fetch history
+                        // Fetch history and AFIP
                         fetchHistory(cuit);
+                        fetchAfip(dni, sex, cuit);
                     } else {
                         resultDiv.className = 'error';
                         resultDiv.textContent = 'Respuesta inesperada del servidor.';
@@ -325,6 +491,122 @@
             } catch (error) {
                 historyLoading.style.display = 'none';
                 historyContent.innerHTML = `<p style="color:#721c24;">Error de conexión al cargar historial.</p>`;
+            }
+        }
+
+        async function fetchAfip(dni, sex, cuit) {
+            const afipSection = document.getElementById('afip-section');
+            const afipLoading = document.getElementById('afip-loading');
+            const afipContent = document.getElementById('afip-content');
+
+            afipSection.style.display = 'block';
+            afipLoading.style.display = 'block';
+            afipContent.innerHTML = '';
+
+            try {
+                const response = await fetch('/check_afip', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dni, sex, cuit }),
+                });
+
+                const data = await response.json();
+                afipLoading.style.display = 'none';
+
+                if (response.ok && data.status === 'success') {
+                    let html = `<div class="afip-card">`;
+
+                    // Name & CUIT
+                    html += `<div class="label">Contribuyente</div>`;
+                    html += `<div class="value">${data.nombre || 'N/A'} — CUIT ${data.cuit}</div>`;
+
+                    // Estado
+                    html += `<div class="label">Estado CUIT</div>`;
+                    html += `<div class="value">${data.estado_clave} (${data.tipo_persona})</div>`;
+
+                    // Condition badges
+                    html += `<div class="label">Condición Fiscal</div>`;
+                    html += `<div class="value">`;
+                    if (data.is_monotributo) {
+                        html += `<span class="condition-badge badge-mono">Monotributista${data.categoria_monotributo ? ' — ' + data.categoria_monotributo : ''}</span>`;
+                    }
+                    if (data.is_responsable_inscripto) {
+                        html += `<span class="condition-badge badge-ri">Responsable Inscripto</span>`;
+                    }
+                    if (data.is_relacion_dependencia) {
+                        html += `<span class="condition-badge badge-dep">Rel. de Dependencia</span>`;
+                    }
+                    if (data.is_autonomo) {
+                        html += `<span class="condition-badge badge-auto">Autónomo</span>`;
+                    }
+                    if (!data.is_monotributo && !data.is_responsable_inscripto && !data.is_relacion_dependencia && !data.is_autonomo) {
+                        html += `<span class="condition-badge badge-none">Sin condición activa detectada</span>`;
+                    }
+                    html += `</div>`;
+
+                    // Domicilio
+                    if (data.domicilio) {
+                        html += `<div class="label">Domicilio Fiscal</div>`;
+                        html += `<div class="value">${data.domicilio}</div>`;
+                    }
+
+                    html += `</div>`; // close .afip-card
+
+                    // Activities
+                    if (data.actividades && data.actividades.length > 0) {
+                        html += `<div class="afip-activities">`;
+                        html += `<details><summary>📋 Actividades Económicas (${data.actividades.length})</summary>`;
+                        html += `<ul>`;
+                        data.actividades.forEach(act => {
+                            html += `<li>${act}</li>`;
+                        });
+                        html += `</ul></details></div>`;
+                    }
+
+                    // Impuestos
+                    if (data.impuestos && data.impuestos.length > 0) {
+                        html += `<div class="afip-impuestos">`;
+                        html += `<details><summary>💰 Impuestos Inscriptos (${data.impuestos.length})</summary>`;
+                        html += `<table class="afip-imp-table">
+                            <thead><tr><th>Impuesto</th><th>Estado</th><th>Desde</th></tr></thead>
+                            <tbody>`;
+                        data.impuestos.forEach(imp => {
+                            const estadoClass = imp.estado === 'Activo' ? 'estado-activo' : 'estado-inactivo';
+                            html += `<tr>
+                                <td>${imp.descripcion}</td>
+                                <td class="${estadoClass}">${imp.estado}</td>
+                                <td>${imp.periodo}</td>
+                            </tr>`;
+                        });
+                        html += `</tbody></table></details></div>`;
+                    }
+
+                    afipContent.innerHTML = html;
+
+                } else if (data.status === 'partial') {
+                    let html = `<div class="afip-partial">`;
+                    html += `<strong>${data.nombre}</strong> — CUIT ${data.cuit}<br>`;
+                    html += `<em>${data.message}</em>`;
+                    if (data.errors && data.errors.length) {
+                        html += `<ul style="margin-top:0.5rem;">`;
+                        data.errors.forEach(err => html += `<li>${err}</li>`);
+                        html += `</ul>`;
+                    }
+                    html += `</div>`;
+                    afipContent.innerHTML = html;
+
+                } else if (data.status === 'not_found') {
+                    afipContent.innerHTML = `<div class="afip-not-found">${data.message}</div>`;
+
+                } else if (data.status === 'no_data') {
+                    afipContent.innerHTML = `<div class="afip-not-found">${data.message}</div>`;
+
+                } else {
+                    afipContent.innerHTML = `<p style="color:#721c24;">Error AFIP: ${data.error || 'desconocido'}</p>`;
+                }
+            } catch (error) {
+                afipLoading.style.display = 'none';
+                afipContent.innerHTML = `<p style="color:#721c24;">Error de conexión al consultar AFIP.</p>`;
             }
         }
     </script>

@@ -1,7 +1,9 @@
 from flask import Flask, render_template, request, jsonify
 from pyBCRAdata.client import BCRAclient
+from afip import Afip
 import pandas as pd
 import traceback
+import os
 
 app = Flask(__name__)
 
@@ -11,6 +13,17 @@ try:
 except Exception as e:
     print(f"Error initializing BCRA client: {e}")
     client = None
+
+# Initialize AFIP SDK
+AFIP_ACCESS_TOKEN = os.environ.get('AFIP_ACCESS_TOKEN', 'qGfm4QDkgugrJrxdw5YDHpfdrBhxwCYH4x3AcwgoavFCjfK4CWBD2lIfE3HjcpN3')
+try:
+    afip_client = Afip({
+        "CUIT": 20409378472,  # Test CUIT for dev mode
+        "access_token": AFIP_ACCESS_TOKEN
+    })
+except Exception as e:
+    print(f"Error initializing AFIP client: {e}")
+    afip_client = None
 
 def calculate_cuil(dni, gender):
     """
@@ -239,6 +252,159 @@ def check_history():
     except Exception as e:
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+@app.route('/check_afip', methods=['POST'])
+def check_afip():
+    """Query AFIP for taxpayer tax status (monotributo, IVA, etc.)"""
+    if not afip_client:
+        return jsonify({'error': 'AFIP client not initialized'}), 500
+
+    data = request.json
+    dni = data.get('dni')
+    sex = data.get('sex')
+    cuit = data.get('cuit')  # Can be provided directly
+
+    # Calculate CUIT from DNI if not provided
+    if not cuit:
+        if not dni:
+            return jsonify({'error': 'DNI o CUIT es requerido'}), 400
+        if not sex:
+            return jsonify({'error': 'Sexo es requerido para calcular el CUIL'}), 400
+        cuit = calculate_cuil(dni, sex)
+        if not cuit:
+            return jsonify({'error': 'No se pudo calcular el CUIL'}), 400
+
+    try:
+        taxpayer = afip_client.RegisterInscriptionProof.getTaxpayerDetails(int(cuit))
+
+        if not taxpayer:
+            return jsonify({'status': 'no_data', 'message': 'No se encontraron datos en AFIP.', 'cuit': cuit})
+
+        # Check for errorConstancia (partial data)
+        if 'errorConstancia' in taxpayer and 'datosGenerales' not in taxpayer:
+            error_data = taxpayer['errorConstancia']
+            nombre = error_data.get('nombre', '')
+            apellido = error_data.get('apellido', '')
+            errors = error_data.get('error', [])
+            return jsonify({
+                'status': 'partial',
+                'cuit': cuit,
+                'nombre': f"{nombre} {apellido}".strip() or 'N/A',
+                'errors': errors,
+                'message': 'Datos parciales - la constancia tiene observaciones'
+            })
+
+        # Extract general data
+        datos_gen = taxpayer.get('datosGenerales', {})
+        nombre = datos_gen.get('nombre', '')
+        apellido = datos_gen.get('apellido', '')
+        razon_social = datos_gen.get('razonSocial', '')
+        full_name = razon_social if razon_social else f"{nombre} {apellido}".strip()
+        estado_clave = datos_gen.get('estadoClave', 'N/A')
+        tipo_persona = datos_gen.get('tipoPersona', 'N/A')
+
+        # Determine tax condition
+        condition = 'Sin datos'
+        category = None
+        is_monotributo = False
+        is_responsable_inscripto = False
+        is_relacion_dependencia = False
+        is_autonomo = False
+
+        # Check monotributo
+        datos_mono = taxpayer.get('datosMonotributo', {})
+        if datos_mono:
+            mono_impuestos = datos_mono.get('impuesto', [])
+            for imp in mono_impuestos:
+                if imp.get('idImpuesto') == 20 and imp.get('estadoImpuesto') == 'AC':
+                    is_monotributo = True
+                    cat_mono = datos_mono.get('categoriaMonotributo', {})
+                    category = cat_mono.get('descripcionCategoria', 'N/A')
+                    break
+
+        # Check regimen general
+        datos_rg = taxpayer.get('datosRegimenGeneral', {})
+        if datos_rg:
+            rg_impuestos = datos_rg.get('impuesto', [])
+            for imp in rg_impuestos:
+                desc = imp.get('descripcionImpuesto', '').upper()
+                estado = imp.get('estadoImpuesto', '')
+                if estado == 'AC':
+                    if 'IVA' in desc and imp.get('idImpuesto') == 30:
+                        is_responsable_inscripto = True
+                    if 'AUTONOMO' in desc or 'AUTÓNOMO' in desc:
+                        is_autonomo = True
+
+        # Check activities for relacion de dependencia
+        all_activities = []
+        for section in ['datosMonotributo', 'datosRegimenGeneral']:
+            sec_data = taxpayer.get(section, {})
+            activities = sec_data.get('actividad', [])
+            for act in activities:
+                desc_act = act.get('descripcionActividad', '')
+                all_activities.append(desc_act)
+                if 'RELAC' in desc_act.upper() and 'DEPENDENCIA' in desc_act.upper():
+                    is_relacion_dependencia = True
+
+        # Determine condition label
+        conditions = []
+        if is_monotributo:
+            conditions.append(f'Monotributista ({category})' if category else 'Monotributista')
+        if is_responsable_inscripto:
+            conditions.append('Responsable Inscripto')
+        if is_relacion_dependencia:
+            conditions.append('Relacion de Dependencia')
+        if is_autonomo:
+            conditions.append('Autonomo')
+
+        condition = ' | '.join(conditions) if conditions else 'Sin condicion activa detectada'
+
+        # Get domicilio
+        domicilio = datos_gen.get('domicilioFiscal', {})
+        domicilio_str = ''
+        if domicilio:
+            parts = [domicilio.get('direccion', ''), domicilio.get('localidad', ''), 
+                     domicilio.get('descripcionProvincia', ''), domicilio.get('codPostal', '')]
+            domicilio_str = ', '.join(p for p in parts if p)
+
+        # Collect all impuestos
+        all_impuestos = []
+        for section in ['datosMonotributo', 'datosRegimenGeneral']:
+            sec_data = taxpayer.get(section, {})
+            for imp in sec_data.get('impuesto', []):
+                all_impuestos.append({
+                    'descripcion': imp.get('descripcionImpuesto', 'N/A'),
+                    'estado': 'Activo' if imp.get('estadoImpuesto') == 'AC' else 'Inactivo',
+                    'periodo': imp.get('periodo', 'N/A')
+                })
+
+        return jsonify({
+            'status': 'success',
+            'cuit': cuit,
+            'nombre': full_name,
+            'estado_clave': estado_clave,
+            'tipo_persona': tipo_persona,
+            'condicion_fiscal': condition,
+            'is_monotributo': is_monotributo,
+            'is_responsable_inscripto': is_responsable_inscripto,
+            'is_relacion_dependencia': is_relacion_dependencia,
+            'is_autonomo': is_autonomo,
+            'categoria_monotributo': category,
+            'domicilio': domicilio_str,
+            'actividades': list(set(all_activities))[:10],
+            'impuestos': all_impuestos
+        })
+
+    except Exception as e:
+        error_msg = str(e)
+        if 'No existe persona' in error_msg:
+            return jsonify({
+                'status': 'not_found',
+                'cuit': cuit,
+                'message': f'No se encontro persona con CUIT {cuit} en AFIP'
+            })
+        traceback.print_exc()
+        return jsonify({'error': error_msg}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
